@@ -1,0 +1,24 @@
+{
+  "embodiment": "arx_x5",
+  "calibration_id": "REPLACE_WITH_VERIFIED_CALIBRATION_RECORD",
+  "camera_convention": "REPLACE_WITH_optical_verified_OR_opengl_verified",
+  "commissioned": false,
+  "arms": {
+    "left": {
+      "joint_names": ["REPLACE_WITH_ACTUAL_ORDERED_NAMES"],
+      "joint_lower": [-1],
+      "joint_upper": [1],
+      "workspace_lower": [-1, -1, -1],
+      "workspace_upper": [1, 1, 1],
+      "T_ee_from_tcp": [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+    },
+    "right": {
+      "joint_names": ["REPLACE_WITH_ACTUAL_ORDERED_NAMES"],
+      "joint_lower": [-1],
+      "joint_upper": [1],
+      "workspace_lower": [-1, -1, -1],
+      "workspace_upper": [1, 1, 1],
+      "T_ee_from_tcp": [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+    }
+  }
+}

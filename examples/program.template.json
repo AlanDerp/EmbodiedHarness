@@ -1,0 +1,27 @@
+{
+  "task_id": "REPLACE_WITH_TASK_ID",
+  "goal": "REPLACE_WITH_CURRENT_OPERATOR_GOAL",
+  "revision": 1,
+  "max_actions": 100,
+  "max_decisions": 150,
+  "max_seconds": 180,
+  "max_state_age_s": 10,
+  "min_confidence": 0.5,
+  "stages": [
+    {
+      "stage_id": "move-left",
+      "kind": "servo",
+      "arm": "left",
+      "target": {
+        "position": [0, 0, 0],
+        "quaternion_wxyz": [1, 0, 0, 0],
+        "frame": "world"
+      }
+    },
+    {
+      "stage_id": "verify-object-relation",
+      "kind": "relation",
+      "relation": "REPLACE_WITH_REGISTERED_PHYSICAL_PREDICATE"
+    }
+  ]
+}

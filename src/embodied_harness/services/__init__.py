@@ -1,0 +1,1 @@
+"""Isolated optional model services."""

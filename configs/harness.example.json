@@ -1,0 +1,14 @@
+{
+  "worker_url": "http://127.0.0.1:8120",
+  "worker_token_env": "EMBODIED_WORKER_TOKEN",
+  "rpc_token_env": "EMBODIED_SYSTEM2_TOKEN",
+  "run_dir": "runs/REPLACE_WITH_YYYYMMDDHHMM_run_name",
+  "host": "127.0.0.1",
+  "port": 8121,
+  "timeout_s": 240,
+  "max_submissions": 1000,
+  "sam3_url": "http://127.0.0.1:8114",
+  "selector": "fixed",
+  "skill_python": null,
+  "extensions": []
+}
