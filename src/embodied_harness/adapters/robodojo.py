@@ -80,6 +80,8 @@ class RoboDojoWorker:
         _count(native_action_limit, "native_action_limit")
         if native_action_limit == 0 or phase not in ("playground", "test"):
             raise ValueError("positive native budget and valid phase required")
+        if hasattr(backend, "action_limit") and native_action_limit != backend.action_limit:
+            raise ValueError("configured action limit differs from the native task")
         _count(max_receipts, "max_receipts")
         if max_receipts == 0:
             raise ValueError("positive receipt capacity required")

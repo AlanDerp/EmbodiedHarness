@@ -1,0 +1,8 @@
+{
+  "categories": {
+    "my_category": {
+      "task": "REPLACE_WITH_NATIVE_TASK",
+      "config": "campaign.local.json"
+    }
+  }
+}

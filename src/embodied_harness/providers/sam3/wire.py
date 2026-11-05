@@ -50,6 +50,8 @@ def decode_request(payload, path):
     if type(payload["schema_version"]) is not int or payload["schema_version"] != 1:
         raise ValueError("unsupported schema_version")
     _text(payload["request_id"], "request_id")
+    if len(payload["request_id"]) > 128:
+        raise ValueError("request_id too long")
     raw = _decode(payload["image_png_base64"], MAX_BODY_BYTES)
     try:
         with Image.open(io.BytesIO(raw)) as image:
@@ -65,6 +67,8 @@ def decode_request(payload, path):
     prompt = payload["prompt"]
     if path == TEXT_PATH:
         _text(prompt, "prompt")
+        if len(prompt) > 1024:
+            raise ValueError("text prompt too long")
     elif path == POINT_PATH:
         if not isinstance(prompt, list) or len(prompt) != 2:
             raise ValueError("point prompt must be [x, y]")
@@ -106,7 +110,9 @@ def decode_response(payload, request, observation, camera_id, prompt):
     shape = observation.cameras[camera_id].depth_m.shape
     result = []
     for item in candidates:
-        if not isinstance(item, dict) or item.get("shape") != list(shape):
+        if (not isinstance(item, dict) or set(item) != {"shape", "mask_base64", "box_xyxy", "score"}
+                or not isinstance(item["shape"], list) or any(type(n) is not int for n in item["shape"])
+                or item["shape"] != list(shape)):
             raise ValueError("candidate shape does not match snapshot")
         raw = _decode(item["mask_base64"], shape[0] * shape[1])
         mask = np.frombuffer(raw, dtype=np.uint8)
@@ -116,5 +122,8 @@ def decode_response(payload, request, observation, camera_id, prompt):
                                  item["box_xyxy"], item["score"], prompt, "sam3",
                                  payload["model_version"], request["input_rgb_sha256"])
         candidate.validate_against(observation)
+        expected = encode_candidate(candidate.mask, candidate.score)["box_xyxy"]
+        if not np.array_equal(candidate.box_xyxy, expected):
+            raise ValueError("response box does not match mask bounds")
         result.append(candidate)
     return tuple(result)

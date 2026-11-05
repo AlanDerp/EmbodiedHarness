@@ -10,5 +10,9 @@
   "sam3_url": "http://127.0.0.1:8114",
   "selector": "fixed",
   "skill_python": null,
-  "extensions": []
+  "extensions": [],
+  "sam3_model_version": "REPLACE_WITH_VERIFIED_READY_MODEL_VERSION",
+  "system2_url": "http://127.0.0.1:8123",
+  "system2_token_env": "EMBODIED_AGENT_TOKEN",
+  "max_interventions": 2
 }

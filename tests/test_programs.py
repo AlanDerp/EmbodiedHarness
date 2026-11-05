@@ -57,40 +57,40 @@ class ProgramTests(unittest.TestCase):
             program.execute("while True: pass")
         self.assertIsNotNone(program.process.poll())
 
-    def test_real_python_subprocess_uses_current_interpreter_and_does_not_inherit_api_tokens(self):
+    def test_real_subprocess_uses_current_interpreter_and_minimal_environment(self):
+        import subprocess
         with patch.dict(os.environ, {"TYPESAFE_API_KEY": "fixture-secret"}):
-            program = self.program()
-        result = program.execute("import os, sys\nchild_pid=os.getpid()\n"
-                                 "interpreter=sys.executable\nhas_token='TYPESAFE_API_KEY' in os.environ",
-                                 exports=("child_pid", "interpreter", "has_token"))
-        self.assertNotEqual(result["exports"]["child_pid"], os.getpid())
-        self.assertEqual(result["exports"]["interpreter"], sys.executable)
-        self.assertFalse(result["exports"]["has_token"])
+            with patch("embodied_harness.programs.host.subprocess.Popen", wraps=subprocess.Popen) as spawn:
+                program = self.program()
+        self.assertNotEqual(program.process.pid, os.getpid())
         self.assertEqual(program.process.args[0], sys.executable)
+        self.assertNotIn("TYPESAFE_API_KEY", spawn.call_args.kwargs["env"])
 
-    def test_forged_completion_cannot_hang_next_pipe_write(self):
-        program = self.program(timeout_s=1)
-        program.execute("import sys\nfrom embodied_harness import wire\n"
-                        "sys.__stdout__.buffer.write(wire.dumps({'kind':'done','ok':True,'exports':{}})+b'\\n')\n"
-                        "sys.__stdout__.buffer.flush()\nwhile True: pass")
-        with self.assertRaises(TimeoutError):
-            program.execute("x = '" + "x" * 100000 + "'")
+    def test_generated_program_cannot_access_raw_protocol(self):
+        program = self.program()
+        result = program.execute("import sys\nsys.__stdout__.write('forged')")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_type"], "ValueError")
+        self.assertTrue(program.execute("x=1")["ok"])
 
     def test_python_hooks_integrate_with_session_and_cannot_claim_success(self):
         backend = NativeFixture()
         worker = RoboDojoWorker(backend, profile(), "episode", native_action_limit=100)
         source = '''
 def skill_init(parameters):
-    return {"status":"active"}
+    return {"status":"active", "runtime_parameters":{"translation_step_m":.01}}
 def skill_observe(state):
     return {"observation":get_observation()}
 def skill_context(state):
-    return {"status":state["status"]}
+    return {"status":state["status"], "parameter_scope": {
+        "stage":"servo", "local_mode":"adaptive", "contact_mode":"free_space", "evidence_valid":True,
+        "parameters":{"translation_step_m":{"unit":"m", "min":.001, "max":.01,
+                       "value":state["runtime_parameters"]["translation_step_m"]}},
+        "adjustments":{"fine":{"parameter":"translation_step_m","value":.001},
+                       "normal":{"parameter":"translation_step_m","value":.01}}}}
 def skill_options(state):
-    return {"normal":"one bounded motion"} if state["status"] == "active" else {}
+    return {"fine":"one small motion", "normal":"one bounded motion"} if state["status"] == "active" else {}
 def skill_tick(state, option):
-    from embodied_harness.control import servo_action
-    from embodied_harness.contracts import Pose
     obs = get_observation()
     result = step(servo_action(obs,"left",Pose([.01,0,0],[1,0,0,0],"world")))
     state["status"]="done"

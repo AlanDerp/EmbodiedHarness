@@ -21,6 +21,12 @@ embodied-harness = "embodied_harness.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools]
+license-files = ["third_party/ASPIRE-LICENSE", "third_party/ASPIRE-NOTICE", "THIRD_PARTY_NOTICES.md"]
+
+[tool.setuptools.package-data]
+"embodied_harness.instructions" = ["*.md"]
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100

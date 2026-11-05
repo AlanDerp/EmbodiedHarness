@@ -1,3 +1,7 @@
+# 架构蓝图（初始设计存档）
+
+当前实现、协议选择及验收状态以 [REBUILD_PLAN](REBUILD_PLAN.zh-CN.md) 和 [SERVER_DEBUG](SERVER_DEBUG.zh-CN.md) 为准。以下保留初始模块设计，不作为当前未完成项判断。
+
 # EmbodiedHarness 架构与模块重建方案
 
 状态：架构设计；2026-10-29。已开始 M1：基础 contracts、geometry、最小打包与 CPU 测试

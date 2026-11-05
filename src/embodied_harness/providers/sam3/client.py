@@ -16,7 +16,7 @@ from .wire import (
 
 
 class Sam3Provider:
-    def __init__(self, base_url="http://127.0.0.1:8114", *, timeout_s=30):
+    def __init__(self, base_url="http://127.0.0.1:8114", *, timeout_s=30, expected_model_version=None):
         parsed = urlsplit(base_url)
         if (parsed.scheme not in ("http", "https") or not parsed.netloc or parsed.query or parsed.fragment
                 or parsed.username or parsed.password):
@@ -25,6 +25,7 @@ class Sam3Provider:
         if timeout_s == 0:
             raise ValueError("timeout_s must be positive")
         self.base_url, self.timeout_s = base_url.rstrip("/"), timeout_s
+        self.expected_model_version = expected_model_version
         # Explicit service address; neither environment proxies nor redirects change its destination.
         class NoRedirect(urllib.request.HTTPRedirectHandler):
             def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -59,6 +60,9 @@ class Sam3Provider:
             if len(raw) > MAX_BODY_BYTES:
                 raise ValueError("response exceeds byte limit")
             candidates = decode_response(json.loads(raw), payload, observation, camera_id, local_prompt)
+            model_version = json.loads(raw)["model_version"]
+            if self.expected_model_version is not None and model_version != self.expected_model_version:
+                raise ValueError("SAM3 model version changed")
             return Result(candidates)
         except (TimeoutError, socket.timeout):
             return Result(error=HarnessError(ErrorCode.TIMEOUT, "SAM3 request timed out"))

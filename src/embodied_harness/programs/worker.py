@@ -6,6 +6,17 @@ import sys
 import traceback
 
 from embodied_harness import wire
+from embodied_harness.contracts import ArmCommand, Pose, RobotAction
+from embodied_harness.programs.policy import safe_builtins, validate
+
+PRIMITIVES = {
+    "get_observation": (), "get_instruction": (), "get_robot_state": (),
+    "step": ("action",),
+    "localize_object": ("episode_id", "snapshot_id", "camera_id", "query", "candidate_index"),
+    "segment_text": ("episode_id", "snapshot_id", "camera_id", "query"),
+    "segment_point": ("episode_id", "snapshot_id", "camera_id", "point_xy"),
+    "mask_to_point_cloud": ("segmentation", "target_frame"), "estimate_geometry": ("cloud",),
+    "servo_action": ("observation", "arm", "target", "opening", "translation_m", "rotation_rad")}
 
 
 class BoundedOutput(io.StringIO):
@@ -29,7 +40,15 @@ def main():
             raise RuntimeError(response["error"])
         return response["result"]
 
-    namespace = {"__name__": "__skill__"}
+    namespace = {"__name__": "__skill__", "__builtins__": safe_builtins(),
+                 "Pose": Pose, "ArmCommand": ArmCommand, "RobotAction": RobotAction}
+    def primitive(name):
+        def call(*args, **params):
+            names = PRIMITIVES[name]
+            if len(args) > len(names) or set(params) & set(names[:len(args)]):
+                raise TypeError("invalid primitive arguments")
+            return invoke(name, **dict(zip(names, args)), **params)
+        return call
     while True:
         line = channel_in.readline(wire.MAX_BYTES + 1)
         if not line:
@@ -42,11 +61,10 @@ def main():
             if any(not isinstance(name, str) or not name.isidentifier() or name.startswith("_") for name in bindings):
                 raise ValueError("invalid program binding")
             namespace.update(bindings)
-            namespace.update(get_observation=lambda: invoke("get_observation"),
-                             step=lambda action: invoke("step", action=action),
-                             localize_object=lambda **params: invoke("localize_object", **params))
+            namespace.update({name: primitive(name) for name in PRIMITIVES})
+            namespace["__builtins__"] = safe_builtins()
             with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
-                exec(compile(command["code"], "<skill>", "exec"), namespace)
+                exec(validate(command["code"]), namespace)
             result["exports"] = {key: namespace[key] for key in command.get("exports", ())}
             wire.dumps(result["exports"])
             result["ok"] = True

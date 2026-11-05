@@ -1,0 +1,9 @@
+{
+  "model": "jev-1.13.0",
+  "credentials_file": "/absolute/experiment/secrets/system1.json",
+  "timeout_s": 30,
+  "rpc_token_env": "EMBODIED_SYSTEM1_TOKEN",
+  "audit_log": "/absolute/experiment/logs/system1-audit.jsonl",
+  "host": "127.0.0.1",
+  "port": 8124
+}

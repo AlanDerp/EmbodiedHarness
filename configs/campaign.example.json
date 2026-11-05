@@ -1,0 +1,21 @@
+{
+  "goal": "REPLACE_WITH_PUBLIC_TASK_INSTRUCTION",
+  "partition_manifest": "/srv/config/partition.json",
+  "frozen_knowledge": "/srv/knowledge/initial",
+  "run_dir": "/srv/embodied-runs/experiment_01",
+  "max_versions": 3,
+  "agent_url": "http://127.0.0.1:8123",
+  "agent_token_env": "EMBODIED_AGENT_TOKEN",
+  "provisioner_url": "http://127.0.0.1:8122",
+  "provisioner_token_env": "EMBODIED_PROVISIONER_TOKEN",
+  "harness": {
+    "worker_token_env": "EMBODIED_WORKER_TOKEN",
+    "sam3_url": "http://127.0.0.1:8114",
+    "sam3_model_version": "REPLACE_WITH_VERIFIED_READY_MODEL_VERSION",
+    "selector": "jev",
+    "jev_model": "REPLACE_WITH_PINNED_SYSTEM1_MODEL",
+    "timeout_s": 240,
+    "max_submissions": 1000,
+    "skill_python": null
+  }
+}

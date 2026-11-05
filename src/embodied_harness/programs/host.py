@@ -68,7 +68,7 @@ class PersistentProgram:
         _count(max_actions, "max_actions")
         if max_actions not in (0, 1):
             raise ValueError("skill hooks permit zero or one action only")
-        deadline, calls, violation = time.monotonic() + self.timeout_s, 0, False
+        deadline, calls, violation, action_failed = time.monotonic() + self.timeout_s, 0, False, False
         try:
             self._send({"code": code, "bindings": bindings or {}, "exports": list(exports)}, deadline)
             while True:
@@ -77,15 +77,15 @@ class PersistentProgram:
                     raise ValueError("invalid child protocol")
                 if message.get("kind") == "done":
                     message["action_calls"] = calls
-                    if violation:
+                    if violation or action_failed:
                         message["ok"] = False
-                        message["error_type"] = "ActionBudgetViolation"
+                        message["error_type"] = "ActionBudgetViolation" if violation else "ActionExecutionFailed"
                     return message
                 if message.get("kind") != "call" or set(message) != {"kind", "method", "params"}:
                     raise ValueError("invalid child primitive request")
                 method = message["method"]
                 try:
-                    if method not in {"get_observation", "step", "localize_object"} or method not in self.methods:
+                    if method not in self.methods:
                         raise PermissionError("primitive unavailable")
                     if method == "step":
                         if calls >= max_actions:
@@ -95,6 +95,8 @@ class PersistentProgram:
                     value = self.methods[method](**message["params"])
                     self._send({"result": value}, deadline)
                 except Exception as exc:
+                    if method == "step":
+                        action_failed = True
                     self._send({"error": type(exc).__name__}, deadline)
         except BaseException:
             self.close()
@@ -136,7 +138,11 @@ class PythonSkill:
                                     "context = skill_context(skill_state)\noptions = skill_options(skill_state)\n",
                                     exports=("feedback", "context", "options"), max_actions=0)
 
-    def tick(self, option):
+    def tick(self, option, assignment=None):
+        if assignment is not None:
+            return self.program.execute("skill_state['runtime_parameters'][assignment['parameter']] = assignment['value']\n"
+                                        "feedback = skill_tick(skill_state, 'advance')\n",
+                                        bindings={"assignment": assignment}, exports=("feedback",), max_actions=1)
         return self.program.execute("feedback = skill_tick(skill_state, selected_option)\n",
                                     bindings={"selected_option": option},
                                     exports=("feedback",), max_actions=1)

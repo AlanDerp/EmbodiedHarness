@@ -1,61 +1,47 @@
-# 本地构建交付与验证范围
+# 本地构建与测试交付
 
-本轮结束：93项CPU/本机HTTP/可信子进程测试通过，相比上轮52项新增41项。
-未启动Isaac Sim、真实System 2、真实Jev或SAM3。技能已改为直接Python子进程，不需要Docker。
+2026-10-29：128项测试通过；Python wheel 构建成功，已检查包含运行时角色提示词、campaign/native 模块和
+ASPIRE LICENSE/NOTICE。fix-loop skill 的官方 quick_validate 校验通过。
+未启动真实 Isaac、SAM3 checkpoint、System 2 模型或 Jev；无 Docker。
 
-| 模块 | 本地实现状态 |
+## 完成模块
+
+| 模块 | 已实现内容 |
 | --- | --- |
-| contracts/geometry | 观测来源、动作/回执、同帧点云、显式坐标系、位姿/TCP变换 |
-| artifacts/perception | 快照、完整定位结果日志、候选消歧、几何关联、有限范围的随动证据 |
-| providers/services | SAM3服务/客户端入口；Jev numeric choice客户端与注入式测试 |
-| embodiments/adapters | 显式ARX profile、原生字典桥、worker与远程client、动作去重、终止/预算边界 |
-| control/runtime | 单步servo、实测到位、阶段计划、选择器、交接/修复、停止与所需证据门控 |
-| programs | 持久Python hook协议、真实子进程启动、宿主逐primitive动作计量，已接delegate_python |
-| tools/agent接入 | 统一工具字典+认证RPC；外部System 2客户端示例，不内嵌具体LLM代理 |
-| evaluation/batch | skills/lessons冻结、哈希/只读staging、固定job计划、失败/中断保留、fresh会话检查 |
-| config/CLI | worker/serve/batch/freeze/verify/validate-profile、显式配置与未commissioned模板 |
+| contracts/artifacts/geometry | immutable观测/动作/回执，快照与hash，同帧RGB-D，frame/TCP变换，点云与可见表面PCA |
+| providers/services/perception | SAM3文本/点HTTP，严格原图mask/score/box，代码与权重pin、strict加载，候选消歧与深度质量 |
+| API/programs | ToolRegistry/CapApi、公共工具schema、ASPIRE源码policy、逐调用provenance、真实持久Python进程 |
+| System 1 | 数值scope/单位/范围验证、宿主测量状态、Jev/fixed、选值注入、实际动作幅度再仲裁 |
+| System 2 | Plan/有序子任务、generate/review/repair接力，目标/前缀/版本/干预限制，native成功独立于review |
+| RoboDojo | 独立native bootstrap、bank/ordinal布局清单、公开RGB-D、原生step_lim、单reset、故障锁定与生命周期 |
+| campaign | 全dev版本矩阵、失败模式修复、仅dev选定、程序hash、一次unseen、heldout固定执行禁S2 |
+| skills/curriculum | 使用效果skill_report、独立verifier两次重构、verified晋升、库冻结/传递、最终库单次rerun_02 |
+| deployment/CLI | 原生子进程provisioner、fresh worker/session、模型驱动角色服务、持久ledger、doctor/check-sam3、配置与skill |
 
-## 本轮新增测试分组
+## 测试实际覆盖
 
-| 测试文件 | 数量 | 实际检查 |
-| --- | --- | --- |
-| test_runtime.py | 25 | 原生转换、动作去重/回执、profile、单步控制、预算、原生成功、修复/停止/日志、认证RPC两跳 |
-| test_evidence.py | 4 | 唯一/歧义身份关联、随动/原位/未知证据、四元数和TCP换算 |
-| test_batch.py | 5 | 全部分母、fresh agent、失败不重跑、中断保留、恢复计划不可改 |
-| test_programs.py | 7 | 持久子进程、primitive额度防绕过、输出/死循环/管道超时、解释器选择与凭据环境不继承、hook到worker链路 |
+| 测试组 | 内容 |
+| --- | --- |
+| contracts/geometry/snapshots/perception/evidence | frame/四元数/不可变数组、快照防覆盖/损坏、RGB hash、深度投影/覆盖、候选歧义、部分证据、身份与随动边界 |
+| SAM3 wire/backend | 真PNG/回环HTTP、身份/尺寸/框mask一致性、空预测与缺字段区分、文本/单正点分支、分数/二值mask、代码/权重hash、禁下载、严格state_dict加载；模型是mock |
+| API/policy/programs | registry参数校验/事件，禁止私有/native/文件/网络/reflection路径，允许Result.data；真实Python子进程持久状态、凭据环境、动作限额、超时/输出/管道边界 |
+| runtime/parameters/relay | single-submit/native计数区分、重复动作去重、profile/预算/终止、低置信/停止、数值菜单拒策略文字、fine档实际动作超限拒绝、S2修复保留前缀/目标、review不等于成功、frozen禁S2 |
+| native/provisioner | 数字ordinal排序与布局hash、fake native一次reset/实际预算/关闭、hash不符不启动、fresh allocation、原生启动失败不重试、进程组清理；没有启动Isaac |
+| campaign | 每版本全dev、dev选定、unseen失败不改程序、heldout固定、provenance拒绝、重复worker/路径逃逸/中断拒重跑、verifier无解题代码、失败不晋升、恢复不重放 |
+| curriculum | 新库向后传递、仅库改变且首轮低分时rerun_02、保留首轮分母/结果、配置改动拒恢复、完成后不重执行 |
+| diagnostics | 文本+点提示+反投影验收、错误权重pin拒绝、doctor只读/空闲/commissioning条件；服务仍是fixture |
+| 跨服务集成 | 实际agent RPC→provisioner RPC→Harness→真实技能子进程→SAM3 HTTP/深度投影→worker RPC；开发失败→repair→unseen/heldout；模型/物理是fixture |
 
-之前52项继续覆盖contract、geometry、快照/定位和SAM3 HTTP。模拟原生worker每次提交
-故意增加2个native action count，验证报告不把提交数冒充原生物理消耗。
-HTTP测试实际创建loopback服务；模型响应、机器人运动学和Jev回答是fixture。
+完整命令：`python -m unittest discover -s tests -q`（NumPy/Pillow，允许本机loopback）。
+不把测试方法数量当实际场景数，也不把 fixture 的native_success当真实任务成功率。
 
-## 批量运行接口
+## 服务器仍需验收
 
-batch.py为宿主代码，job包含job_id/task/scene_ref，私有scene_ref不进入agent工具注册表。
-场景计划由部署侧在冻结知识后确定，运行中不可更换。启动示例：
+1. 固定RoboDojo/Isaac/资产版本，真实 native-worker 启动/单reset、渲染/状态稳定、step_lim/终止计数与关闭。
+2. 实测相机光学frame、米制depth、K/E、关节顺序/限位、夹爪极性与EE/TCP；完成commissioned profile。
+3. 合法取得官方SAM3源码/权重，真实GPU strict加载、文本/点mask目视检查、RGB-D投影、显存与延迟。
+4. 提供真实System 2模型驱动（fresh conversation＋多模态输入）及固定Jev模型/凭据；验证实际API响应与handoff。
+5. 小预算单场景动作与停止验收，再跑正式互斥分区。检查完整分母、原生成功、失败证据与库冻结。
 
-```sh
-embodied-harness batch --plan /private/path/jobs.json --frozen /path/frozen \
-  --run-dir /path/new-batch --factory my_deployment:open_episode
-```
-
-可信open_episode(job, workspace)返回具有worker_session_id、agent_session_id、run()、close()
-的driver，在目标设备初始化新的worker和代理。runner在run前检查会话ID未重复，workspace
-只接收skills/lessons，运行前后校验知识，提交前持久记录running状态。
-run返回primary_native_success/recovered_native_success/interventions，必须来自原生证据；
-runner验证字段一致性，但不能凭字段自行证明远端评分真实性。
-
-恢复只执行pending项，running改为interrupted，failed/completed均不自动重跑。
-分母始终包含计划全部job，主成功和修复成功分别汇总。ledger为单宿主控制器使用，
-不是分布式任务队列；目前没有GPU资源调度、自动场景抽样或自动agent provisioning。
-
-## 转移到目标设备时还需完成
-
-1. 安装/固定RoboDojo与Isaac版本和资产，提供可信backend factory，核对实际原生字段与生命周期。
-2. 实测相机frame、关节顺序/限位、EE/TCP和夹爪极性，填好profile；不能直接使用模板占位值。
-3. 安装SAM3并部署本地权重，做真实RGB-D定位与显存/时延验证；提供Jev凭据并核对真实API响应。
-4. 安装技能Python环境，配置目标网络和System 2工具客户端，注册任务适用的物理关系检查器。
-5. 若做正式评估，补齐设备侧fresh agent/scene driver与隔离挂载，先零动作验收，再小预算闭环。
-
-当前具备本地可测试的最小双循环工程链路，尚不是全部ASPIRE功能的等价复刻。
-固定完整任务程序封存/Test局部修复协议、通用抓取/规划服务、全任务关系验证和正式隔离评估
-仍未完成，不把本地fixture通过报告为机器人实验成功。
+通用抓取规划/接触关系真值并未凭空实现：任务代码利用SAM3几何，宿主只接受可信物理关系检查器或原生成功，
+未知就handoff。CPU测试不能证明真实识别、标定、安全性或物理成功；AST也不是OS权限隔离。

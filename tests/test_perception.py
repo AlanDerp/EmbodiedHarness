@@ -139,8 +139,10 @@ class PerceptionTests(unittest.TestCase):
         self.assertEqual(len(result.data.candidates), 2)
         self.assertIsNone(result.data.projection)
         chosen = self.localize(Result(candidates), candidate_index=1)
-        self.assertTrue(chosen.ok)
+        self.assertEqual(chosen.error.code, ErrorCode.LOW_CONFIDENCE)
+        self.assertIsNone(chosen.data.geometry)
         self.assertEqual(chosen.data.selected_index, 1)
+        self.assertTrue(self.localize(Result(candidates), candidate_index=0).ok)
 
     def test_no_candidates_and_missing_provider(self):
         self.assertEqual(self.localize(Result(())).error.code, ErrorCode.NO_CANDIDATES)

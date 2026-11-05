@@ -1,89 +1,46 @@
-# SAM3 客户端与模型服务
+# SAM3 分割服务与真实验收
 
-已实现版本化 wire、标准库 HTTP 客户端、独立 HTTP 服务及懒加载 SAM3 backend。
-与 ASPIRE 的旧 wire 不兼容；内部仍通过 SegmentationProvider 接入定位流水线。
-
-## 安装与启动
-
-客户端环境（不安装模型依赖）：
-
-```sh
-python -m pip install -e '.[sam3-client]'
-```
-
-模型环境需要另行安装官方 SAM3 源码及其依赖，准备获授权的本地 checkpoint；
-安装本项目 extra 不会自动下载 SAM3 源码或权重。记录实际 SAM3 revision 与依赖版本。
-本轮没有建立可复现的 GPU 依赖锁或自动 provisioning。
+Harness 安装 `.[sam3-client]` 只获得 PNG/HTTP 客户端，不在本机部署权重。
+模型设备另行安装获授权的[官方 SAM3 源码](https://github.com/facebookresearch/sam3)和依赖，
+固定实际源码 revision、依赖版本及本地 checkpoint SHA256；本项目不分发权重、不代替授权流程。
 
 ```sh
 python -m pip install -e '.[sam3-service]'
-embodied-sam3 --checkpoint /absolute/path/to/sam3.pt --device cuda:0 --port 8114
+embodied-sam3 --checkpoint /srv/models/sam3.pt --checkpoint-sha256 ACTUAL_64_HEX \
+  --device cuda:0 --port 8114 --audit-log /srv/logs/sam3.jsonl
 ```
 
-backend 根据官方 build_sam3_image_model(checkpoint_path, device, load_from_HF,
-enable_inst_interactivity)、Sam3Processor 和 predict_inst 接口实现；加载一次、eval、
-inference_mode，模型内部预处理由官方 processor 完成。传输保持原始 PNG 分辨率，
-分割结果须回到原图尺寸。checkpoint SHA256 进入 model_version；该字段当前不包含源码 revision，
-部署记录仍须另外保存 revision。加载在 HTTP 监听前完成，加载失败则启动失败。
+先验证 checkpoint hash，禁止隐式 HF 下载。构造 SAM3 segmentation+instance interactive 模型，
+按官方 detector/tracker 键映射严格加载权重；缺键/多键/格式不兼容则失败，不能用随机初始化的部分模型继续。
+模型 `.eval()`，inference_mode/autocast，单进程串行推理；先加载成功才监听 HTTP。
+model_version=`sam3:code:<SHA256>:checkpoint:<SHA256>`；code hash 覆盖实际安装包的 .py/.gz 文件，
+包括 tokenizer 资源。它是部署指纹，不是对来源/许可证的密码学认证，仍需操作员核对官方 revision 与权重许可。
 
-核对来源（2026-10-29）：
-[官方 model_builder](https://github.com/facebookresearch/sam3/blob/main/sam3/model_builder.py)、
-[官方 processor](https://github.com/facebookresearch/sam3/blob/main/sam3/model/sam3_image_processor.py)、
-[官方 predict_inst](https://github.com/facebookresearch/sam3/blob/main/sam3/model/sam3_image.py)。
-接口已核对，真实权重/GPU 执行尚未验证。
+文本：Sam3Processor.set_image + set_text_prompt。点提示：同一官方图像特征的 predict_inst，
+一个原图像素正点、multimask。接口核对日期 2026-10-29：
+[builder](https://github.com/facebookresearch/sam3/blob/main/sam3/model_builder.py)、
+[processor](https://github.com/facebookresearch/sam3/blob/main/sam3/model/sam3_image_processor.py)、
+[predict_inst](https://github.com/facebookresearch/sam3/blob/main/sam3/model/sam3_image.py)。
 
-## 接入已有快照
+服务返回原图分辨率二值 mask、有限0..1分数与紧包围框；最多5个候选。空结果合法，缺字段/尺寸错误不合法。
+wire 校验 request ID、RGB SHA256、PNG尺寸、mask/box一致性；client 可锁定完整 model_version，
+不自动重试，禁重定向与环境代理。图像不从 URL 拉取；服务不接触 simulator 真值。
+默认 loopback 绑定；跨设备通过 tunnel 或受控网络。请求/推理并发、字节、尺寸、超时均有限额。
+服务 audit 记录输入 hash、提示、路由、模型指纹、耗时和候选数，Harness 保存实际 mask 与快照关联。
 
-```python
-from embodied_harness.artifacts import SnapshotStore
-from embodied_harness.perception import Perception
-from embodied_harness.providers.sam3 import Sam3Provider
+真实验收使用目标设备捕获的公开 RGB-D 快照：
 
-store = SnapshotStore("runs/my-run/snapshots")
-provider = Sam3Provider("http://127.0.0.1:8114", timeout_s=30)
-pipeline = Perception(store, provider)
-result = pipeline.localize_object("episode-id", "snapshot-id", "cam_head", "white bowl")
+```sh
+embodied-harness check-sam3 --url http://127.0.0.1:8114 \
+  --store /srv/run/snapshots --episode EPISODE --snapshot SNAPSHOT --camera CAMERA \
+  --query 'public object description' --checkpoint-sha256 ACTUAL_64_HEX --log /srv/logs/acceptance.jsonl
 ```
 
-client 同时支持 `segment_point(observation, camera_id, (x, y))`，只接受一个图内正点。
-点提示结果的本地 prompt 为 `point:x,y`；高层 Perception 当前仅提供文字定位。
-客户端禁止环境代理和重定向，不做自动重试；本地服务默认只监听 127.0.0.1。
+命令检查 /ready 的权重/代码指纹、文本分割、从文本候选选一个前景像素再测点提示、RGB-D反投影，
+保存可核验报告。它不自动判定物体语义正确，也不证明相机标定或物理任务成功；须目视核对 mask 与目标，
+再验证米制 depth、K、世界光学外参、遮挡和多候选消歧。正式定位使用 Perception.localize_object，
+多候选不默认选最大/第一项，需显式选择；选定候选分数低于宿主阈值（默认0.5）返回low_confidence，
+低深度覆盖或几何歧义保留部分结果并handoff。
 
-## 协议与资源
-
-- GET `/health`：进程存活；GET `/ready`：backend 已加载，否则 503。
-- POST `/v1/segment/text`、`/v1/segment/point`：schema_version=1、request_id、
-  input_rgb_sha256、image_png_base64、prompt。请求只含图像与提示，不含机器人状态。
-- 返回相同 request_id/图像哈希，以及 provider、model_version、candidates。
-  mask 为原图大小的 uint8 0/1 base64，框为 XYXY exclusive，最多 5 个候选。
-- client 用原请求上下文补上 ObservationSource/camera_id；拒绝跨请求、跨图像、
-  错误尺寸、非二值 mask 和非法分数。空候选是有效推理响应，由定位层返回 NO_CANDIDATES。
-- 请求/响应上限 16 MiB、图像上限 1568×1568 像素总数；不自动裁剪或缩放。
-- 同时最多接受两项 HTTP 请求，最多一项模型推理，额外请求 503。
-  排队及 socket 读有超时；CUDA 推理本身没有硬中止机制，客户端超时不证明推理已取消。
-  health/ready 也受总请求限额影响。此服务没有认证或 TLS，远程部署需宿主提供访问边界。
-
-当前 HTTP 错误 429/503 映射 UNAVAILABLE，其他 HTTP 错误映射 INVALID_RESPONSE；
-推理异常返回 500，不伪装成空候选。原始异常和模型耗时账本尚未接 recorder，
-生产诊断和自动进程恢复仍待实现。
-
-## 本轮测试
-
-新增 13 项 CPU 测试，总计 52 项：
-
-| 测试 | 验证内容 |
-| --- | --- |
-| PNG/提示往返 | 原始 RGB 不变，点坐标边界、负值、NaN 与布尔值拒绝 |
-| 非法请求 | 错误版本、图像哈希、无效 base64、额外字段拒绝 |
-| 响应绑定 | request_id/哈希/版本、mask 尺寸和字节、候选数量检查 |
-| 真实本机 HTTP 链路 | client→HTTP server→模拟 backend→分割 contract→快照定位/几何 |
-| health/ready | 服务存活与模型就绪分开，未就绪返回 UNAVAILABLE |
-| HTTP 无效输入 | 缺失请求字段返回 400 |
-| 推理失败 | 模拟 backend 抛错返回失败，不变成成功 |
-| 空/错误尺寸输出 | 空预测保留空候选，错误 mask 尺寸拒绝 |
-| 并发限额 | 槽位耗尽时返回服务不可用 |
-| 客户端错误 | 模拟超时、拒绝连接、畸形 JSON/响应身份及非法参数 |
-| 依赖隔离 | 导入客户端不加载 torch、sam3、Pillow 或 simulator |
-
-其中 HTTP 测试会临时绑定本机端口；需要允许 loopback 网络。模型是明确标记的
-FixtureBackend，没有真实 SAM3、torch 或 GPU 推理，因此不能据此声称识别能力已验证。
+本机测试用 CPU fixture 验证协议与 backend 分支，不冒称真实 SAM3 推理。
+实际官方 checkpoint 在目标 GPU 的严格加载、文本/点分割、显存/延迟仍是部署验收项。

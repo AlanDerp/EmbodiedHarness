@@ -1,40 +1,31 @@
 # EmbodiedHarness
 
-面向 RoboDojo / ARX X5 的新具身执行 harness。工程组织参考本地 ASPIRE，保留
-EmbodiedDualLoop 的 System 2 规划、System 1 有界执行和证据交接思路。
+参照 ASPIRE 的工程框架与 tabletop fix-loop，结合 EmbodiedDualLoop 在 RoboDojo 上的适配，
+实现 System 2 规划/修复、System 1 有界数值执行及 SAM3 视觉感知。全部是普通 Python 服务/子进程，无 Docker。
 
-当前已实现基础 contracts 与最小 Python 打包，包括观测快照、相机、位姿、机器人状态、
-分割、点云、双臂动作、结构化结果，以及观测/分割 provider 协议。
-另已实现同帧 RGB-D 投影、显式坐标变换及可见表面 PCA 包围盒。
-SAM3 客户端、HTTP 服务和模型 backend 入口已实现。
-本地还已实现 RoboDojo worker/client 接口桥、机器人 profile、单步控制、有界阶段运行时、
-System 2 工具 RPC、fixed/Jev selector、事件记录、基础身份关联和知识冻结。
-另有持久Python子进程技能hooks与批量评估ledger；本轮共93项本地测试通过。
-没有运行真实 SAM3 模型调用、GPU 实验或机器人动作。
-
-Python 3.11+ 安装与 CPU 测试：
+已实现：公开观测与同帧 RGB-D 几何、SAM3 文本/点分割服务、原生 RoboDojo 启动与生命周期、
+工具 registry/源码契约、Python hooks、数值参数仲裁、S2 接力、ASPIRE campaign、多任务 verified 库传递与独立 rerun。
+本机验证包括真实 HTTP 和 Python 子进程；模型与物理使用 fixture。真实 GPU、Isaac、Jev 和模型驱动需在服务器验收。
 
 ```sh
-python -m pip install -e .
-python -m unittest discover -s tests -v
+python -m pip install -e '.[sam3-client]'
+python -m unittest discover -s tests -q
+embodied-harness --help
 ```
 
-也可在已安装 NumPy 的环境使用 `PYTHONPATH=src python -m unittest discover -s tests -v`。
-类型约定与最小示例参见 [contracts 使用说明](docs/CONTRACTS.zh-CN.md)。
-几何接口、测试范围与局限参见 [geometry 使用与验证](docs/GEOMETRY.zh-CN.md)。
-已接通[快照存储与定位流程](docs/PERCEPTION.zh-CN.md)：保存/读取公开观测、
-注入分割 provider、候选消歧、深度覆盖检查和三维定位，保留失败时的部分证据。
-[SAM3 服务说明](docs/SAM3.zh-CN.md)包括安装、部署、协议和 HTTP 测试范围。
-[远程运行时与构建状态](docs/REMOTE_RUNTIME.zh-CN.md)包括设备分工、原生 backend 接口、
-System 2 接入示例、配置模板与当前功能边界。现有 CLI 支持 worker、serve、batch、freeze、verify、validate-profile。
-[本轮构建与测试总览](docs/LOCAL_BUILD.zh-CN.md)明确本地完成项和部署侧待验收项；
-[Python技能说明](docs/PYTHON_SKILLS.zh-CN.md)包含解释器配置与hooks接口。
-[服务器调试步骤](docs/SERVER_DEBUG.zh-CN.md)提供安装、自检及远端设备接入顺序；无需Docker。
-本地最小链路已用模拟机器人验证；真实 Isaac 启动 factory、标定和模型联调仍在部署设备完成。
-运行含 SAM3 协议测试的完整 CPU 测试集前安装 `.[sam3-client]`，并允许本机 loopback 端口。
+- [Codex 按类别启动测试（AGENTS.md 入口）](docs/CODEX_CATEGORY_TEST.zh-CN.md)
+- [缺口清单、实施顺序与验收记录](docs/REBUILD_PLAN.zh-CN.md)
+- [服务器部署、分区和实验命令](docs/SERVER_DEBUG.zh-CN.md)
+- [这台服务器的逐步手动部署教程](docs/MANUAL_DEPLOYMENT_100.105.7.84.zh-CN.md)
+- [本地测试覆盖与远端验收边界](docs/LOCAL_BUILD.zh-CN.md)
+- [SAM3 安装、权重指纹与真实快照验收](docs/SAM3.zh-CN.md)
+- [Python 技能与 System 1 参数契约](docs/PYTHON_SKILLS.zh-CN.md)
+- [项目 fix-loop skill](.agents/skills/fix-loop/SKILL.md)
+- [来源、许可与改编说明](THIRD_PARTY_NOTICES.md)
 
-参见 [架构与模块重建方案](docs/ARCHITECTURE.zh-CN.md)：模块边界、计划目录、
-SAM3 服务分层、迁移来源、开发顺序与验收条件。
+核心入口：`campaign` 单任务 dev→选定→unseen→heldout→独立技能验证；`curriculum` 按任务顺序传递库，
+最后对低分且库已变化的任务进行单独 `rerun_02`。`doctor` 只读检查服务，`check-sam3` 验收真实快照。
+交互式开发保留 `serve/run_task` 的 S2 接力；严格 campaign 中 S2 只在 dev 版本之间修复。
 
-新 API / SAM3 / 双循环实验应使用独立的协议和实验配置，不沿用
-`workspace-session-v1` 的四原语复现标签。旧项目和已有实验记录保持独立。
+使用新的 `aspire-fixloop-dualloop-robodojo-v1` 协议，不冒用 ASPIRE 原始 benchmark 或旧四原语实验标签。
+源码白名单和无凭据子进程是公开 API 执行契约，不是 OS 权限沙箱；部署使用专用账号与已标定 profile。

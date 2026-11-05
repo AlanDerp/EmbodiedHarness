@@ -44,6 +44,10 @@ class Session:
         self.last_report = None
         self.stop_requested = threading.Event()
         self.skill_python, self.python_tasks = skill_python, {}
+        from embodied_harness.api import CapApi
+        self.api = CapApi(self)
+        self.localizations = []
+        self.relay = None
 
     def stop(self):
         """Latch stop; an in-flight native action must still return its physical receipt."""
@@ -71,15 +75,31 @@ class Session:
             result = self.perception.localize_object(episode_id, snapshot_id, camera_id, query,
                                                      candidate_index=candidate_index)
             self.log.append("localization", result=result)
+            self.localizations.append(result)
+            self.localizations = self.localizations[-8:]
             return result
 
     def tools(self):
-        return {"observe": self.observe, "localize_object": self.localize,
+        from embodied_harness.registry import ToolRegistry
+        controls = {"observe": self.observe,
                 "delegate": self.delegate, "delegate_python": self.delegate_python,
                 "get_report": lambda: self.last_report, "stop": self.stop,
+                "run_task": self.run_task,
                 "capabilities": lambda: {"protocol": "embodied-harness-v1",
                     "stage_kinds": ["servo", "relation"], "selector": type(self.selector).__name__,
-                    "relations": sorted(self.evaluators), "phase": self.executor.adapter.metadata["phase"]}}
+                    "relations": sorted(self.evaluators), "phase": self.executor.adapter.metadata["phase"],
+                    "public_tools": self.api.registry.describe()}}
+        registry = ToolRegistry()
+        for name, function in controls.items():
+            registry.register(name, function, effect="control")
+        return {**registry.methods(), **self.api.methods()}
+
+    def run_task(self, goal, plan=None, allow_system2=True):
+        from embodied_harness.runtime.relay import Relay
+        if self.executor.adapter.metadata["phase"] == "test" and allow_system2:
+            raise PermissionError("strict Test does not permit System 2 generation or repair")
+        with self.lock:
+            return (self.relay or Relay(self)).run(goal, plan, allow_system2=allow_system2)
 
     def delegate_python(self, task_id, goal, source, parameters, revision=1,
                         max_actions=100, max_decisions=150, max_seconds=180, relation=None):
@@ -120,12 +140,16 @@ class Session:
             started, initial_actions, decisions = time.monotonic(), self.executor.submissions, 0
             native_success = False
             diagnostics = {}
+            provenance_pass = False
+            active_assignment = None
 
             def report(status, reason):
                 result = {"status": status, "reason": reason, "task_id": task_id, "revision": revision,
                           "submissions": self.executor.submissions - initial_actions,
                           "decisions": decisions, "source": self.executor.current.source if self.executor.current else None,
-                          "profile": "python-hooks-v1", "diagnostics": dict(diagnostics)}
+                          "profile": "dual-loop-parameters-v1", "diagnostics": dict(diagnostics),
+                          "provenance_audit": "pass" if provenance_pass else "rejected",
+                          "program_fingerprint": digest}
                 self.log.append("python_handoff", report=result)
                 self.last_report = result
                 return result
@@ -135,6 +159,26 @@ class Session:
                 if (self.stop_requested.is_set() or time.monotonic() - started > max_seconds
                         or self.executor.submissions - initial_actions >= max_actions):
                     raise RuntimeError("Python task stopped or out of action/time budget")
+                action.validate_against(self.executor.current)
+                translation_cap, rotation_cap, opening_cap = .03, .15, .05
+                if active_assignment is not None:
+                    name, value = active_assignment["parameter"], active_assignment["value"]
+                    if name == "translation_step_m":
+                        translation_cap = value
+                    elif name == "rotation_step_rad":
+                        rotation_cap = value
+                    elif name == "opening_step":
+                        opening_cap = value
+                for arm, command in action.arms.items():
+                    measured = self.executor.current.robot_state.arms[arm]
+                    if abs(command.gripper_position-measured.gripper_position) > opening_cap+1e-8:
+                        raise ValueError("jaw action exceeds selected parameter")
+                    if command.ee_target is not None:
+                        distance, angle = pose_error(measured.ee_pose, command.ee_target)
+                        if distance > translation_cap+1e-8 or angle > rotation_cap+1e-8:
+                            raise ValueError("action exceeds selected numeric parameter")
+                    elif any(abs(float(a-b)) > .15 for a,b in zip(command.joint_targets, measured.joint_positions)):
+                        raise ValueError("joint step exceeds host bound")
                 action_id = uuid.uuid4().hex
                 self.log.append("action_intent", action=action, action_id=action_id)
                 try:
@@ -149,11 +193,14 @@ class Session:
 
             process = None
             try:
+                from embodied_harness.programs.policy import validate
+                validate(source)
+                provenance_pass = True
                 self.log.append("python_delegate", task_id=task_id, revision=revision, source=source,
                                 parameters=parameters, fingerprint=digest)
                 self.observe()
                 process = PersistentProgram(
-                    {"get_observation": self.observe, "step": step, "localize_object": self.localize},
+                    {**self.api.methods(), "step": step},
                     python_executable=self.skill_python,
                     timeout_s=min(30, max_seconds))
                 skill = PythonSkill(process)
@@ -188,8 +235,18 @@ class Session:
                         return report("needs_system2", "invalid_python_menu")
                     if status != "active" or decisions >= max_decisions:
                         return report("needs_system2", "python_status_or_decision_budget")
-                    self.log.append("selection_request", state=context, options=options)
-                    selected = self.selector.select(context, options)
+                    from embodied_harness.runtime.parameters import parameter_menu, measured_state
+                    scope, canonical_options = parameter_menu(context, options)
+                    state = measured_state(self.executor.current, self.localizations,
+                                           target_pose=context.get("target_pose"), active_arm=context.get("active_arm"))
+                    if not scope["evidence_valid"] or scope["contact_mode"] in ("pregrasp", "contact", "release") and not state["objects"]:
+                        return report("needs_system2", "fresh_visual_evidence_required")
+                    self.log.append("selection_request", state=state, options=canonical_options)
+                    if scope["local_mode"] == "adaptive":
+                        selected = self.selector.select(state, canonical_options)
+                    else:
+                        from embodied_harness.runtime.selectors import Selection
+                        selected = Selection("advance", 1)
                     decisions += 1
                     selected.validate(options)
                     self.log.append("selection", option=selected.option, confidence=selected.confidence,
@@ -198,7 +255,9 @@ class Session:
                         return report("needs_system2", "low_confidence")
                     if self.stop_requested.is_set():
                         return report("stopped", "operator_stop_requested")
-                    tick = skill.tick(selected.option)
+                    assignment = scope["adjustments"].get(selected.option)
+                    active_assignment = assignment
+                    tick = skill.tick(selected.option, assignment)
                     diagnostics.clear()
                     diagnostics.update({key: tick[key] for key in ("error_type", "traceback", "stdout", "stderr") if key in tick})
                     self.log.append("python_tick", result=tick)

@@ -18,8 +18,12 @@ class Localization:
 
 
 class Perception:
-    def __init__(self, store: SnapshotStore, provider: SegmentationProvider | None):
+    def __init__(self, store: SnapshotStore, provider: SegmentationProvider | None, *, min_score=0.5):
+        _number(min_score, "min_score")
+        if not 0.5 <= min_score <= 1:
+            raise ValueError("host perception confidence floor must be in [0.5, 1]")
         self.store, self.provider = store, provider
+        self.min_score = min_score
 
     def localize_object(
         self, episode_id: str, snapshot_id: str, camera_id: str, query: str, *,
@@ -62,6 +66,8 @@ class Perception:
         index = 0 if candidate_index is None else candidate_index
         if index >= len(candidates):
             raise ValueError("candidate_index is out of range")
+        if candidates[index].score < self.min_score:
+            return Result(Localization(candidates, index), HarnessError(ErrorCode.LOW_CONFIDENCE, "selected SAM3 score below host threshold"))
         projection = mask_to_point_cloud(observation, candidates[index])
         evidence = Localization(candidates, index, projection.data)
         if not projection.ok:

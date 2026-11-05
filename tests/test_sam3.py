@@ -64,6 +64,7 @@ class WireTests(unittest.TestCase):
         for changes in ({"request_id": "other"}, {"input_rgb_sha256": "bad"},
                         {"schema_version": 2}, {"candidates": [dict(item, shape=[4, 3])]},
                         {"candidates": [dict(item, mask_base64="Ag==")]},
+                        {"candidates": [dict(item, box_xyxy=[0, 0, 3, 3])]},
                         {"candidates": [item] * 6}):
             with self.assertRaises(ValueError):
                 decode_response(dict(response, **changes), request, obs, "head", "bowl")

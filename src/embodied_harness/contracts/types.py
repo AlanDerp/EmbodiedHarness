@@ -310,6 +310,7 @@ class ErrorCode(str, Enum):
     NO_VALID_DEPTH = "no_valid_depth"
     INSUFFICIENT_DEPTH = "insufficient_depth"
     AMBIGUOUS = "ambiguous"
+    LOW_CONFIDENCE = "low_confidence"
     STALE_EVIDENCE = "stale_evidence"
     GEOMETRY_FAILED = "geometry_failed"
     EXECUTION_FAILED = "execution_failed"

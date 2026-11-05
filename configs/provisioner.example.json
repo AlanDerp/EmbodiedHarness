@@ -1,0 +1,11 @@
+{
+  "runtime_root": "/srv/RoboDojo",
+  "profile": "/srv/config/arx_x5.commissioned.json",
+  "root": "/srv/embodied-runs/native",
+  "python_command": ["/srv/IsaacLab/isaaclab.sh", "-p"],
+  "worker_token_env": "EMBODIED_WORKER_TOKEN",
+  "startup_timeout_s": 300,
+  "rpc_token_env": "EMBODIED_PROVISIONER_TOKEN",
+  "host": "127.0.0.1",
+  "port": 8122
+}

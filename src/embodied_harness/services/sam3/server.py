@@ -4,6 +4,7 @@ import argparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import threading
+import time
 
 import numpy as np
 
@@ -15,8 +16,9 @@ from embodied_harness.providers.sam3.wire import (
 class Sam3Server(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, backend=None, *, request_timeout_s=30):
+    def __init__(self, address, backend=None, *, request_timeout_s=30, audit=None):
         self.backend = backend
+        self.audit = audit
         self.request_timeout_s = request_timeout_s
         self._slots = threading.BoundedSemaphore(2)
         self.inference_lock = threading.Lock()
@@ -99,6 +101,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             backend = self.server.backend
+            started = time.monotonic()
             candidates = backend.segment(rgb, prompt, point=self.path == POINT_PATH)
             encoded = []
             for mask, score in candidates:
@@ -110,7 +113,16 @@ class Handler(BaseHTTPRequestHandler):
             value = {"schema_version": 1, "request_id": payload["request_id"],
                      "input_rgb_sha256": payload["input_rgb_sha256"], "provider": "sam3",
                      "model_version": backend.model_version, "candidates": encoded}
-        except Exception:
+            if self.server.audit is not None:
+                self.server.audit.append("sam3_inference", request_id=payload["request_id"],
+                    rgb_sha256=payload["input_rgb_sha256"], prompt=prompt, route=self.path,
+                    model_version=backend.model_version, seconds=time.monotonic()-started,
+                    candidate_count=len(encoded))
+        except Exception as exc:
+            if self.server.audit is not None:
+                self.server.audit.append("sam3_inference_failed", request_id=payload["request_id"],
+                    rgb_sha256=payload["input_rgb_sha256"], route=self.path,
+                    model_version=self.server.backend.model_version, error_type=type(exc).__name__)
             self._reply(500, {"error": "model inference failed"})
             return
         finally:
@@ -124,10 +136,13 @@ def main():
     parser.add_argument("--port", type=int, default=8114)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--checkpoint", required=True)
+    parser.add_argument("--checkpoint-sha256", required=True, help="expected hash of authorized local weights")
+    parser.add_argument("--audit-log", required=True)
     args = parser.parse_args()
     from .backend import Sam3Backend
-    backend = Sam3Backend(args.checkpoint, device=args.device)
-    with Sam3Server((args.host, args.port), backend) as server:
+    backend = Sam3Backend(args.checkpoint, device=args.device, checkpoint_sha256=args.checkpoint_sha256)
+    from embodied_harness.artifacts.events import EventLog
+    with Sam3Server((args.host, args.port), backend, audit=EventLog(args.audit_log)) as server:
         try:
             server.serve_forever()
         except KeyboardInterrupt:
