@@ -205,11 +205,18 @@ def main():
         if args.config:
             from embodied_harness.drivers.claude_code import ClaudeCodeDriver
             config = json.loads(Path(args.config).read_text())
+            driver_name = config.pop("driver", "claude-code")
+            if driver_name == "deepseek-api":
+                from embodied_harness.drivers.deepseek_api import DeepSeekApiDriver as Driver
+            elif driver_name == "claude-code":
+                Driver = ClaudeCodeDriver
+            else:
+                raise ValueError("unknown model driver")
             address = (config.pop("host", "127.0.0.1"), config.pop("port", 8123))
             token = _token(config.pop("rpc_token_env"))
-            driver = ClaudeCodeDriver(**config)
-            service = AgentService(lambda: ClaudeCodeDriver(**config), lambda: {
-                "driver": "claude-code", "model": driver.model,
+            driver = Driver(**config)
+            service = AgentService(lambda: Driver(**config), lambda: {
+                "driver": driver_name, "model": driver.model,
                 "credentials_configured": driver.configured()})
         else:
             module, function = args.factory.split(":", 1)
