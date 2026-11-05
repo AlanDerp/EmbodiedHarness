@@ -37,6 +37,8 @@ if context.get('hang'):
 if context.get('fail'):
     print(os.environ['ANTHROPIC_AUTH_TOKEN'],file=sys.stderr)
     sys.exit(3)
+if context.get('verbose_events'):
+    print(json.dumps({'type':'system','subtype':'thinking_tokens','data':'x'*(9*1024*1024)}))
 reply=context.get('fixture_reply', {'cwd':os.getcwd(), 'config':os.environ['CLAUDE_CONFIG_DIR'],
       'api_url':os.environ['ANTHROPIC_BASE_URL'], 'token_present':bool(os.environ['ANTHROPIC_AUTH_TOKEN']),
       'other_secret_present':'TYPESAFE_API_KEY' in os.environ, 'arguments':sys.argv[1:],
@@ -123,6 +125,10 @@ print(json.dumps({'type':'result','subtype':'success','is_error':False,'result':
         self.assertEqual(record['failure'], 'TimeoutExpired')
         self.assertIn('[REDACTED]', record['stderr'])
         self.assertNotIn('fixture-private-key', str(record))
+
+    def test_verbose_thinking_events_do_not_count_as_role_result(self):
+        reply = self.driver().respond('generate', '', {'verbose_events': True, 'fixture_reply': {'ok': True}})
+        self.assertEqual(reply, {'ok': True})
 
     def test_image_request_is_real_rgb_and_preserves_calibration_metadata(self):
         message=json.loads(public_message({'observation':scene()}))

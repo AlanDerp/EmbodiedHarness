@@ -137,7 +137,8 @@ class ClaudeCodeDriver:
                 raise TimeoutError("Claude Code role request exceeded deadline") from None
             if failure is not None:
                 raise failure
-            if process.returncode or len(output) > 8*1024*1024 or len(errors) > 1024*1024:
+            # Verbose streams include per-token thinking events, not just the role reply.
+            if process.returncode or len(output) > 64*1024*1024 or len(errors) > 1024*1024:
                 # CLI errors may echo auth headers; never propagate raw stderr or output.
                 raise RuntimeError(f"Claude Code request failed (exit {process.returncode}); credentials and model access require checking")
             records = [json.loads(line) for line in output.splitlines() if line.strip()]
@@ -145,6 +146,8 @@ class ClaudeCodeDriver:
             if len(results) != 1:
                 raise RuntimeError("Claude Code stream must contain exactly one terminal result")
             envelope = results[0]
+            if len(json.dumps(envelope).encode()) > 8*1024*1024:
+                raise ValueError("Claude Code terminal result exceeds byte limit")
             if envelope.get("is_error") is True or envelope.get("subtype") != "success":
                 raise RuntimeError("Claude Code did not return a successful role result")
             result = envelope.get("structured_output", envelope.get("result"))
