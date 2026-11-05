@@ -32,6 +32,7 @@ message=json.load(sys.stdin)
 content=message['message']['content']
 context=json.loads(content[0]['text'])
 if context.get('hang'):
+    print(os.environ['ANTHROPIC_AUTH_TOKEN'],file=sys.stderr,flush=True)
     time.sleep(30)
 if context.get('fail'):
     print(os.environ['ANTHROPIC_AUTH_TOKEN'],file=sys.stderr)
@@ -40,6 +41,7 @@ reply=context.get('fixture_reply', {'cwd':os.getcwd(), 'config':os.environ['CLAU
       'api_url':os.environ['ANTHROPIC_BASE_URL'], 'token_present':bool(os.environ['ANTHROPIC_AUTH_TOKEN']),
       'other_secret_present':'TYPESAFE_API_KEY' in os.environ, 'arguments':sys.argv[1:],
       'image_count':sum(item['type']=='image' for item in content)})
+print(json.dumps({'type':'system','subtype':'init'}))
 print(json.dumps({'type':'result','subtype':'success','is_error':False,'result':json.dumps(reply), 'session_id':'fixture'}))
 ''')
         self.cli.chmod(0o700)
@@ -70,6 +72,8 @@ print(json.dumps({'type':'result','subtype':'success','is_error':False,'result':
         args=first['arguments']
         self.assertEqual(args[args.index('--tools')+1],'')
         self.assertIn('--restricted',args)
+        self.assertEqual(args[args.index('--output-format')+1],'stream-json')
+        self.assertIn('--verbose',args)
         self.assertIn('--no-session-persistence',args)
         self.assertNotIn('--resume',args)
         self.assertNotIn('fixture-private-key',' '.join(args))
@@ -97,6 +101,28 @@ print(json.dumps({'type':'result','subtype':'success','is_error':False,'result':
         with self.assertRaises(TimeoutError):
             self.driver(timeout_s=.3).respond('generate','',{'hang':True})
         self.assertFalse(list(self.root.glob('role-*')))
+
+    def test_rejected_cli_response_is_audited_without_credentials(self):
+        audit = self.root/'audit'
+        with self.assertRaises(RuntimeError):
+            self.driver(audit_dir=audit).respond('generate', '', {'fail': True})
+        path = next(audit.glob('*.json'))
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        self.assertNotIn('fixture-private-key', path.read_text())
+        record = json.loads(path.read_text())
+        self.assertEqual(record['returncode'], 3)
+        self.assertIn('[REDACTED]', record['stderr'])
+
+    def test_timeout_preserves_partial_output_and_rpc_error_type(self):
+        audit = self.root/'timeout-audit'
+        driver = self.driver(timeout_s=.3, audit_dir=audit)
+        service = AgentService(lambda:driver, lambda:{})
+        with self.assertRaisesRegex(RuntimeError, 'RPC failed: TimeoutError'):
+            self.serve(service).call('respond', role='generate', context={'hang':True})
+        record = json.loads(next(audit.glob('*.json')).read_text())
+        self.assertEqual(record['failure'], 'TimeoutExpired')
+        self.assertIn('[REDACTED]', record['stderr'])
+        self.assertNotIn('fixture-private-key', str(record))
 
     def test_image_request_is_real_rgb_and_preserves_calibration_metadata(self):
         message=json.loads(public_message({'observation':scene()}))

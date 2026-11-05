@@ -30,6 +30,7 @@ class AgentService:
         if role == "verify" and set(context) != {"goal", "public", "library"}:
             raise ValueError("independent verifier may only see public goal/observation/library")
         prompt = files("embodied_harness.instructions").joinpath("fix_loop.md").read_text()
+        prompt += "\n" + files("embodied_harness.instructions").joinpath("python_api.md").read_text()
         prompt += "\nActive role: " + role
         driver = self.factory()
         try:

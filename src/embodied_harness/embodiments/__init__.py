@@ -49,8 +49,9 @@ class RobotProfile:
         _text(self.calibration_id, "calibration_id")
         if self.camera_convention not in ("optical_verified", "opengl_verified"):
             raise ValueError("explicitly verified camera convention required")
-        if type(self.commissioned) is not bool or set(self.arms) != {"left", "right"}:
-            raise ValueError("explicit commissioning state and both ARX arms required")
+        expected = {"right"} if self.embodiment == "libero_panda" else {"left", "right"}
+        if type(self.commissioned) is not bool or set(self.arms) != expected:
+            raise ValueError("explicit commissioning state and embodiment arm mapping required")
         if any(not isinstance(arm, ArmProfile) for arm in self.arms.values()):
             raise TypeError("arms must contain ArmProfile")
         object.__setattr__(self, "arms", MappingProxyType(dict(self.arms)))

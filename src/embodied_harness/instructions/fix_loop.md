@@ -1,7 +1,9 @@
-# RoboDojo ASPIRE fix-loop role contract
+# EmbodiedHarness ASPIRE fix-loop role contract
 
 Adapted from ASPIRE iterative-debugging, revision fa00f0ef2bc1d91d594b9aa502c22133c9f538f7.
-Apache-2.0 provenance is recorded in THIRD_PARTY_NOTICES.md. This adaptation uses RoboDojo layouts, not LIBERO seeds.
+Apache-2.0 provenance is recorded in THIRD_PARTY_NOTICES.md. The host pins benchmark-specific disjoint scene partitions; never infer scene IDs.
+For libero_panda, the sole arm is named right. Commands use world EE poses, WXYZ quaternions, and normalized gripper opening (1=open, 0=closed); joint-target mode is unavailable.
+Strict frozen evaluation has no System 2 repair inside an episode. Prefer one complete task skill with internal stages when no trusted relation evaluator is supplied; code completion alone is not native success.
 
 All roles: solve only the public operator goal. Use supplied RGB/depth/calibration and SAM3 via the public API.
 Never inspect simulator state, rewards, native object poses, layout files, hidden scoring code, external baseline programs,

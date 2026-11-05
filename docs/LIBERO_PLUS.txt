@@ -1,0 +1,25 @@
+LIBERO-Plus deployment condition (2026-11-05)
+
+Base: 1a063ef; native adapter: src/embodied_harness/adapters/libero_plus.py.
+This condition uses RGB-D and OSC_POSE, not the official RGB VLA evaluation or the earlier ASPIRE LIBERO-Pro campaign.
+
+The single Panda arm is named right. World EE poses use metres and WXYZ quaternions; gripper opening is 1=open, 0=closed. Joint-target commands are explicitly rejected. Native steps use the benchmark's OSC scaling, one control tick per host action, 20 Hz. The deployment action cap is 4000; ten initialization settling ticks are recorded separately. Harness skill/action/time limits continue to apply independently.
+
+RGB and depth are from the same native observation, flipped together when the renderer uses OpenGL image convention. Depth becomes metric axial depth. Robosuite camera utilities provide calibrated optical extrinsics and intrinsics. Object-state and object poses are not exported. Native check_success is the only task-success authority.
+
+scene_ref is a zero-based index into the actual selected task's initialization bank. Out-of-range indices are rejected; no modulo remapping. Virtual variant name, physical BDDL plus serialized initialization content forms the partition fingerprint, and duplicate contents cannot appear across partitions. Single-state tasks cannot supply three disjoint groups within one task and require a separately specified cross-variant partition; do not silently reuse a state.
+
+Provisioner config selects backend=libero_plus; native-worker receives --backend libero_plus. Campaign config pins a distinct condition protocol (current: aspire-fixloop-libero-plus-rgbd-osc-typed-contract-v3) and native_protocol=libero-plus-native-provisioner-v1. RoboDojo remains the default for existing configs.
+
+Server deployment: /mnt/nimloth/benchmark-envs/embodied-harness.
+Host .venv and native .venv-native are separate. The latter currently reads existing Python 3.12 third-party dependency packages through a .pth file; changing those shared dependencies can affect this deployment. Harness, SAM3 and robosuite sources are staged under this deployment; large LIBERO-Plus assets are a read-only-use symlink to the previously downloaded asset directory. Do not remove the asset source. No ASPIRE or Dual Loop policy/runtime code is imported.
+
+Real acceptance: 146 CPU/HTTP/subprocess tests passed. Native capture returned two 800x512 RGB-D cameras; 12 single ticks produced a measured upward movement and exactly 12 consumed actions. SAM3 text/point/depth acceptance passed with a pinned code/checkpoint fingerprint. DeepSeek accepted native images; Jev returned a choice from two bounded numeric candidates. These are readiness checks, not task success.
+
+The first campaign uses libero_spatial:0, development indices 0/1/2, unseen 3, heldout 4/5/6, at most three development versions. Initial skills/lessons are empty; historical ASPIRE skills are not silently imported. Every candidate runs all development states. Program selection precedes unseen/heldout, which cannot cause repairs. Independent skill reconstruction/promotion follows the existing campaign contract.
+
+No Docker. Role calls use fresh Claude CLI restricted sessions with no built-in tools or MCP tools. Generated skills use the existing public API policy. These restrictions are not an OS sandbox. Services bind only loopback and use owner-only credentials outside the repository. GPU 5 is shared; no other processes are stopped, and the SAM3 process has a 25% PyTorch allocator limit. This does not guarantee zero contention or cap all non-PyTorch GPU allocations.
+
+Evidence: configs/native-acceptance.local.json, runs/deployment-20261105/doctor.json, sam3-acceptance.jsonl, system1-events.jsonl, and runs/<campaign>/deployment.json, campaign.json, selected.json, final-result.json or failure.json. Failed infrastructure probes and model-caused failures are retained separately. A complete ledger with zero successes is still a failed policy result, not evidence to discard.
+
+Generation diagnostics: the first run failed before development; a separate diagnostic rejected private helper names. Typed public API instructions were then added. The v2 run also failed during generation after approximately 540 seconds without a terminal CLI record; its exact server exception was not retained. Both directories remain failed and are excluded from any claim of completed evaluation, not recast as zero-success trials. The v3 condition raises the role deadline from 540 to 1800 seconds, with campaign RPC deadline 1860 seconds, and preserves partial output on timeout. It does not change scene partitions, physics budgets or policy code. All conditions retain separate ledgers; do not combine them.

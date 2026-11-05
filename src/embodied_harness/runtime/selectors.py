@@ -36,7 +36,7 @@ class JevSelector:
             raise ValueError("timeout must be positive")
         self.model, self.timeout_s, self.transport = model, timeout_s, transport
         self.credentials_file = credentials_file
-        self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({"https": os.environ["TYPESAFE_PROXY_URL"]} if os.environ.get("TYPESAFE_PROXY_URL") else {}))
 
     def _request(self, payload):
         key = self.api_key()

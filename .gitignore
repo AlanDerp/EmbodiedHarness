@@ -17,3 +17,6 @@ runs/
 *.pth
 *.safetensors
 /experiment/
+
+/vendor/
+/configs/libero-native/

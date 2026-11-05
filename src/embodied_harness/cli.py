@@ -80,7 +80,8 @@ def run_campaign(config, mode="campaign"):
         manifest = json.loads(Path(config["partition_manifest"]).read_text())
         runner = Campaign(config["run_dir"], task=manifest["task"], goal=config["goal"],
                           partitions=manifest["partitions"], frozen_knowledge=config["frozen_knowledge"],
-                          max_versions=config.get("max_versions", 3))
+                          max_versions=config.get("max_versions", 3),
+                          protocol=config.get("protocol", "aspire-fixloop-dualloop-robodojo-v1"))
     else:
         from embodied_harness.curriculum import Curriculum
         tasks = []
@@ -89,7 +90,7 @@ def run_campaign(config, mode="campaign"):
             tasks.append({"task_id": task["task_id"], "goal": task["goal"], **manifest})
         runner = Curriculum(config["run_dir"], tasks, config["frozen_knowledge"],
                             rerun_threshold=config.get("rerun_threshold", .8), max_versions=config.get("max_versions", 3))
-    agent = RemoteCampaignAgent(RpcClient(config["agent_url"], _token(config["agent_token_env"]), timeout_s=600))
+    agent = RemoteCampaignAgent(RpcClient(config["agent_url"], _token(config["agent_token_env"]), timeout_s=config.get("agent_timeout_s", 600)))
     episodes = ProvisionedEpisodes(RpcClient(config["provisioner_url"], _token(config["provisioner_token_env"]), timeout_s=600), harness)
     return runner.run(agent, episodes)
 
@@ -110,6 +111,7 @@ def main():
     worker.add_argument("--token-env", default="EMBODIED_WORKER_TOKEN")
     native = commands.add_parser("native-worker", help="start provisioned RoboDojo without an external factory")
     native.add_argument("--config", required=True)
+    native.add_argument("--backend", choices=["robodojo", "libero_plus"], default="robodojo")
     native.add_argument("--profile", required=True)
     native.add_argument("--episode-id", required=True)
     native.add_argument("--phase", choices=["playground", "test"], default="playground")
@@ -261,7 +263,10 @@ def main():
     if args.command in ("worker", "native-worker"):
         token = _token(args.token_env)
         if args.command == "native-worker":
-            from embodied_harness.adapters.robodojo_native import from_config
+            if args.backend == "libero_plus":
+                from embodied_harness.adapters.libero_plus import from_config
+            else:
+                from embodied_harness.adapters.robodojo_native import from_config
             backend = from_config(args.config)
             limit = backend.action_limit
         else:

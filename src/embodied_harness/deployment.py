@@ -54,7 +54,10 @@ class ProvisionedEpisodes:
 class NativeProvisioner:
     """Run on the simulator machine; one native process at a time, ordinary Python."""
     def __init__(self, *, runtime_root, profile, root, python_command, worker_token_env,
-                 startup_timeout_s=300):
+                 startup_timeout_s=300, backend="robodojo"):
+        if backend not in ("robodojo", "libero_plus"):
+            raise ValueError("unsupported native backend")
+        self.backend = backend
         import os
         if not isinstance(python_command, list) or not python_command or not all(isinstance(x, str) and x for x in python_command):
             raise ValueError("python_command requires an argv list for the Isaac Python runtime")
@@ -72,7 +75,10 @@ class NativeProvisioner:
         import socket
         import subprocess
         import time
-        from embodied_harness.adapters.robodojo_native import layout_catalog
+        if self.backend == "libero_plus":
+            from embodied_harness.adapters.libero_plus import layout_catalog
+        else:
+            from embodied_harness.adapters.robodojo_native import layout_catalog
         from embodied_harness.rpc import RpcClient
         if self.active:
             raise RuntimeError("close previous native allocation first")
@@ -92,7 +98,7 @@ class NativeProvisioner:
             sock.bind(("127.0.0.1", 0))
             port = sock.getsockname()[1]
         command = [*self.command, "-m", "embodied_harness.cli", "native-worker", "--config", str(path),
-                   "--profile", self.profile, "--episode-id", identity, "--phase", "test",
+                   "--backend", self.backend, "--profile", self.profile, "--episode-id", identity, "--phase", "test",
                    "--port", str(port), "--token-env", self.token_env]
         with (directory / "process.log").open("ab") as log:
             process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
@@ -140,6 +146,6 @@ class NativeProvisioner:
     def describe(self):
         from embodied_harness.embodiments import RobotProfile
         profile = RobotProfile.from_file(self.profile)
-        return {"protocol": "robodojo-native-provisioner-v1", "commissioned": profile.commissioned,
+        return {"protocol": self.backend.replace("_", "-") + "-native-provisioner-v1", "commissioned": profile.commissioned,
                 "calibration_id": profile.calibration_id, "active_allocations": len(self.active),
-                "runtime_present": (Path(self.runtime_root) / "src/eval_client/eval_env.py").is_file()}
+                "runtime_present": (Path(self.runtime_root) / ("libero/libero/envs/env_wrapper.py" if self.backend == "libero_plus" else "src/eval_client/eval_env.py")).is_file()}

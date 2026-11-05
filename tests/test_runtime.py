@@ -408,7 +408,7 @@ class RpcIntegrationTests(unittest.TestCase):
             with self.assertRaises(urllib.error.HTTPError) as caught:
                 RpcClient(url, "wrong-token").call("describe")
             self.assertEqual(caught.exception.code, 401)
-            with self.assertRaises(urllib.error.HTTPError):
+            with self.assertRaisesRegex(RuntimeError, 'RPC failed:'):
                 RpcClient(url, "worker-token").call("reset")
         finally:
             if host_server:

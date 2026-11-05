@@ -12,6 +12,7 @@ from pathlib import Path
 import signal
 import subprocess
 import tempfile
+import uuid
 
 import numpy as np
 
@@ -75,15 +76,17 @@ def public_message(context):
 
 class ClaudeCodeDriver:
     def __init__(self, executable, credentials_file, *, model="deepseek-flash[1m]",
-                 base_url="https://api.deepseek.com/anthropic", timeout_s=540, workspace_root=None):
+                 base_url="https://api.deepseek.com/anthropic", timeout_s=540, workspace_root=None,
+                 audit_dir=None):
         self.executable = str(Path(executable).resolve(strict=True))
         self.credentials_file = str(Path(credentials_file).absolute())
         _text(model, "model")
         _number(timeout_s, "timeout_s")
-        if not 0 < timeout_s <= 540 or base_url != "https://api.deepseek.com/anthropic":
+        if not 0 < timeout_s <= 1800 or base_url != "https://api.deepseek.com/anthropic":
             raise ValueError("bounded timeout and official DeepSeek endpoint required")
         self.model, self.base_url, self.timeout = model, base_url, timeout_s
         self.workspace_root = workspace_root
+        self.audit_dir = Path(audit_dir) if audit_dir else None
         self.last_metadata = None
 
     def configured(self):
@@ -104,11 +107,12 @@ class ClaudeCodeDriver:
                        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1")
             command = [self.executable, "-p", "--restricted", "--tools", "", "--strict-mcp-config",
                 "--mcp-config", '{"mcpServers":{}}', "--setting-sources", "", "--no-session-persistence",
-                "--input-format", "stream-json", "--output-format", "json", "--max-turns", "1",
+                "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--max-turns", "1",
                 "--model", self.model, "--system-prompt", instructions +
                 "\nReturn exactly the requested role JSON object. No markdown or surrounding commentary."]
             process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, cwd=directory, env=env, start_new_session=True)
+            failure = None
             try:
                 output, errors = process.communicate(payload, timeout=self.timeout)
             except BaseException as exc:
@@ -117,14 +121,30 @@ class ClaudeCodeDriver:
                         os.killpg(process.pid, signal.SIGKILL)
                     except ProcessLookupError:
                         pass
-                process.communicate()
-                if isinstance(exc, subprocess.TimeoutExpired):
-                    raise TimeoutError("Claude Code role request exceeded deadline") from None
-                raise
+                output, errors = process.communicate()
+                failure = exc
+            if self.audit_dir is not None:
+                self.audit_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+                # Preserve rejected generations before parsing/Plan validation; never save auth.
+                record = {"role": role, "model": self.model, "returncode": process.returncode,
+                          "failure": type(failure).__name__ if failure else None,
+                          "stdout": output.decode(errors="replace").replace(key, "[REDACTED]"),
+                          "stderr": errors.decode(errors="replace").replace(key, "[REDACTED]")}
+                path = self.audit_dir / (uuid.uuid4().hex + ".json")
+                with open(path, "x", opener=lambda name, flags: os.open(name, flags, 0o600)) as stream:
+                    json.dump(record, stream)
+            if isinstance(failure, subprocess.TimeoutExpired):
+                raise TimeoutError("Claude Code role request exceeded deadline") from None
+            if failure is not None:
+                raise failure
             if process.returncode or len(output) > 8*1024*1024 or len(errors) > 1024*1024:
                 # CLI errors may echo auth headers; never propagate raw stderr or output.
                 raise RuntimeError(f"Claude Code request failed (exit {process.returncode}); credentials and model access require checking")
-            envelope = json.loads(output)
+            records = [json.loads(line) for line in output.splitlines() if line.strip()]
+            results = [item for item in records if item.get("type") == "result"]
+            if len(results) != 1:
+                raise RuntimeError("Claude Code stream must contain exactly one terminal result")
+            envelope = results[0]
             if envelope.get("is_error") is True or envelope.get("subtype") != "success":
                 raise RuntimeError("Claude Code did not return a successful role result")
             result = envelope.get("structured_output", envelope.get("result"))

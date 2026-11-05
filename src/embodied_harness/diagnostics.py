@@ -60,7 +60,7 @@ def doctor(config):
     agent, native = describe("agent"), describe("provisioner")
     if (agent.get("protocol") != "aspire-role-agent-v1" or not agent.get("fresh_conversation_per_request")
             or not agent.get("credentials_configured", True)
-            or native.get("protocol") != "robodojo-native-provisioner-v1"
+            or native.get("protocol") != config.get("native_protocol", "robodojo-native-provisioner-v1")
             or not native.get("commissioned") or not native.get("runtime_present") or native.get("active_allocations") != 0):
         raise ValueError("agent/provisioner/profile not ready or previous allocation active")
     system1 = None

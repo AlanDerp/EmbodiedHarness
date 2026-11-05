@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import threading
 import urllib.request
+import urllib.error
 from urllib.parse import urlsplit
 import uuid
 
@@ -34,7 +35,13 @@ class RpcClient:
         request = urllib.request.Request(self.url, body, headers={
             "Content-Type": "application/json", "Authorization": "Bearer " + self.token})
         # Never retry an action after an uncertain transport failure.
-        with self.opener.open(request, timeout=self.timeout_s) as response:
+        try:
+            response = self.opener.open(request, timeout=self.timeout_s)
+        except urllib.error.HTTPError as exc:
+            if exc.code != 400:
+                raise
+            response = exc
+        with response:
             value = wire.loads(response.read(wire.MAX_BYTES + 1))
         if type(value.get("version")) is not int or value["version"] != 1 or value.get("request_id") != request_id:
             raise ValueError("RPC response identity mismatch")

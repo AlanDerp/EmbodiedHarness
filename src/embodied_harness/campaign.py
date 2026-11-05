@@ -31,7 +31,7 @@ class Campaign:
     repairs happen only between complete development matrices.
     """
 
-    def __init__(self, root, *, task, goal, partitions, frozen_knowledge, max_versions=3):
+    def __init__(self, root, *, task, goal, partitions, frozen_knowledge, max_versions=3, protocol="aspire-fixloop-dualloop-robodojo-v1"):
         if type(max_versions) is not int or not 1 <= max_versions <= 10:
             raise ValueError("max_versions must be 1..10")
         # Revalidate even a hand-written manifest, without needing native imports.
@@ -40,7 +40,7 @@ class Campaign:
         self.root, self.frozen = Path(root), Path(frozen_knowledge)
         self.root.mkdir(parents=True, exist_ok=True)
         self.path = self.root / "campaign.json"
-        spec = {"protocol": "aspire-fixloop-dualloop-robodojo-v1", "task": task, "goal": goal,
+        spec = {"protocol": protocol, "task": task, "goal": goal,
                 "partitions": checked, "knowledge_sha256": verify_knowledge(self.frozen),
                 "max_versions": max_versions}
         if self.path.exists():
