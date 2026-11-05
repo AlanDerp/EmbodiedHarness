@@ -37,6 +37,14 @@ class DeepSeekApiTests(unittest.TestCase):
                 envelope['content'] = [{'type':'thinking','thinking':'not allowed'}]
                 with self.assertRaisesRegex(RuntimeError, 'text-only'):
                     driver.respond('repair', 'contract', {})
+                envelope['content'].append({'type':'text','text':'{"repaired":true}'})
+                thinking_driver = DeepSeekApiDriver(keys, thinking='enabled', max_tokens=131072, timeout_s=1800)
+                self.assertEqual(thinking_driver.respond('repair', 'contract', {}), {'repaired':True})
+                self.assertEqual(calls[-1]['thinking'], {'type':'enabled'})
+                self.assertEqual(calls[-1]['max_tokens'], 131072)
+                envelope['stop_reason'] = 'max_tokens'
+                with self.assertRaisesRegex(RuntimeError, 'incomplete response'):
+                    thinking_driver.respond('repair', 'contract', {})
             for p in (Path(folder)/'audit').glob('*.json'):
                 self.assertEqual(p.stat().st_mode & 0o777, 0o600)
                 self.assertNotIn('fixture-key', p.read_text())
