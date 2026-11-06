@@ -61,7 +61,11 @@ def pose_delta(target, measured_position, measured_xyzw):
 
 
 class LiberoPlusNative:
-    def __init__(self, runtime_root, task, scene_ref, run_dir, action_limit=4000):
+    def __init__(self, runtime_root, task, scene_ref, run_dir, action_limit=4000, record_video=False):
+        if type(record_video) is not bool:
+            raise ValueError("record_video must be boolean")
+        self.record_video, self.video = record_video, None
+        self.video_last_count, self.video_frames = -1, 0
         if type(action_limit) is not int or not 1 <= action_limit <= 4000:
             raise ValueError("bounded native action_limit required")
         definition, states, bddl = task_data(runtime_root, task)
@@ -116,11 +120,27 @@ class LiberoPlusNative:
                 "intrinsic_matrix": get_camera_intrinsic_matrix(sim, name, *rgb.shape[:2]),
                 "extrinsic_matrix": get_camera_extrinsic_matrix(sim, name)}
         q = np.asarray(self.obs["robot0_eef_quat"])
+        self._record(vision)
         public = {"instruction": self.instruction, "vision": vision, "state": {
             "right_ee_pose": np.r_[self.obs["robot0_eef_pos"], q[[3, 0, 1, 2]]],
             "right_arm_joint_state": np.asarray(self.obs["robot0_joint_pos"]).copy(),
             "right_ee_joint_state": np.array([np.clip(np.sum(np.abs(self.obs["robot0_gripper_qpos"]))/.08, 0, 1)])}}
         return NativeFrame(public, self.count, self.terminated, self.truncated, self.success)
+
+    def _record(self, vision):
+        if not self.record_video or self.video_last_count == self.count:
+            return
+        frame = np.concatenate([vision[name]["color"] for name in ("agentview", "robot0_eye_in_hand")], axis=1)
+        if self.video is None:
+            import imageio_ffmpeg
+            self.video = imageio_ffmpeg.write_frames(str(self.directory/"rollout.mp4"),
+                (frame.shape[1], frame.shape[0]), fps=20, codec="libx264", pix_fmt_in="rgb24",
+                pix_fmt_out="yuv420p", output_params=["-threads", "1", "-movflags", "frag_keyframe+empty_moov"],
+                ffmpeg_timeout=10)
+            self.video.send(None)
+        self.video.send(np.ascontiguousarray(frame))
+        self.video_last_count = self.count
+        self.video_frames += 1
 
     def step(self, action):
         if self.failed or self.terminated or self.truncated or self.count >= self.action_limit:
@@ -144,9 +164,19 @@ class LiberoPlusNative:
         return frame
 
     def close(self):
-        if self.env is not None:
-            self.env.close()
-            self.env = None
+        try:
+            if self.video is not None:
+                self.video.close()
+                self.video = None
+            if self.record_video and self.video_frames:
+                (self.directory/"video.json").write_text(json.dumps({"file": "rollout.mp4",
+                    "fps": 20, "frames": self.video_frames, "native_actions": self.count,
+                    "cameras_left_to_right": ["agentview", "robot0_eye_in_hand"],
+                    "initial_frame_included": True, "settling_frames_included": False}))
+        finally:
+            if self.env is not None:
+                self.env.close()
+                self.env = None
 
 
 def from_config(path):

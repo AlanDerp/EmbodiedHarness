@@ -54,10 +54,13 @@ class ProvisionedEpisodes:
 class NativeProvisioner:
     """Run on the simulator machine; one native process at a time, ordinary Python."""
     def __init__(self, *, runtime_root, profile, root, python_command, worker_token_env,
-                 startup_timeout_s=300, backend="robodojo"):
+                 startup_timeout_s=300, backend="robodojo", record_video=False):
         if backend not in ("robodojo", "libero_plus"):
             raise ValueError("unsupported native backend")
         self.backend = backend
+        if type(record_video) is not bool or (record_video and backend != "libero_plus"):
+            raise ValueError("video recording is supported for LIBERO-Plus only")
+        self.record_video = record_video
         import os
         if not isinstance(python_command, list) or not python_command or not all(isinstance(x, str) and x for x in python_command):
             raise ValueError("python_command requires an argv list for the Isaac Python runtime")
@@ -90,8 +93,11 @@ class NativeProvisioner:
         identity = uuid.uuid4().hex
         directory = self.root / identity
         directory.mkdir(exist_ok=False)
+        (directory / "job.json").write_text(json.dumps(job))
         config = {"runtime_root": self.runtime_root, "task": job["task"], "scene_ref": job["scene_ref"],
                   "run_dir": str(directory / "native")}
+        if self.backend == "libero_plus":
+            config["record_video"] = self.record_video
         path = directory / "native-config.json"
         path.write_text(json.dumps(config))
         with socket.socket() as sock:
