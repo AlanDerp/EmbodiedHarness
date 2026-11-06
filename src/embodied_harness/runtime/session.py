@@ -32,7 +32,16 @@ class RelationEvidence:
 
 class Session:
     def __init__(self, executor: Executor, store, event_log, *, selector=None, perception=None,
-                 evaluators=None, max_revisions=3, skill_python=None):
+                 evaluators=None, max_revisions=3, skill_python=None,
+                 parameter_selection_mode="system1", jev_override_threshold=.8):
+        if parameter_selection_mode not in ("system1", "system2_prior_jev_override"):
+            raise ValueError("unknown parameter selection mode")
+        from embodied_harness.contracts.types import _number
+        _number(jev_override_threshold, "jev_override_threshold")
+        if jev_override_threshold > 1:
+            raise ValueError("Jev threshold must be in [0,1]")
+        self.parameter_selection_mode = parameter_selection_mode
+        self.jev_override_threshold = jev_override_threshold
         _count(max_revisions, "max_revisions")
         if not max_revisions:
             raise ValueError("max_revisions must be positive")
@@ -242,22 +251,31 @@ class Session:
                     if not scope["evidence_valid"] or scope["contact_mode"] in ("pregrasp", "contact", "release") and not state["objects"]:
                         return report("needs_system2", "fresh_visual_evidence_required")
                     self.log.append("selection_request", state=state, options=canonical_options)
-                    if scope["local_mode"] == "adaptive":
+                    use_prior = scope["local_mode"] == "adaptive" and self.parameter_selection_mode == "system2_prior_jev_override"
+                    if use_prior:
+                        from embodied_harness.runtime.selectors import prior_with_jev_override
+                        decision = prior_with_jev_override(self.selector, state, canonical_options,
+                            context.get("parameter_prior"), self.executor.current.source, self.jev_override_threshold)
+                        option = decision["option"]
+                        self.log.append("parameter_arbitration", **decision)
+                    elif scope["local_mode"] == "adaptive":
                         selected = self.selector.select(state, canonical_options)
                     else:
                         from embodied_harness.runtime.selectors import Selection
                         selected = Selection("advance", 1)
                     decisions += 1
-                    selected.validate(options)
-                    self.log.append("selection", option=selected.option, confidence=selected.confidence,
-                                    raw_response=getattr(self.selector, "last_response", None))
-                    if selected.confidence < .5:
-                        return report("needs_system2", "low_confidence")
+                    if not use_prior:
+                        selected.validate(options)
+                        option = selected.option
+                        self.log.append("selection", option=option, confidence=selected.confidence,
+                                        raw_response=getattr(self.selector, "last_response", None))
+                        if selected.confidence < .5:
+                            return report("needs_system2", "low_confidence")
                     if self.stop_requested.is_set():
                         return report("stopped", "operator_stop_requested")
-                    assignment = scope["adjustments"].get(selected.option)
+                    assignment = scope["adjustments"].get(option)
                     active_assignment = assignment
-                    tick = skill.tick(selected.option, assignment)
+                    tick = skill.tick(option, assignment)
                     diagnostics.clear()
                     diagnostics.update({key: tick[key] for key in ("error_type", "traceback", "stdout", "stderr") if key in tick})
                     self.log.append("python_tick", result=tick)

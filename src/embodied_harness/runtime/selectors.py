@@ -26,6 +26,29 @@ class FixedSelector:
         return Selection("normal" if "normal" in options else sorted(options)[0], 1.0)
 
 
+def prior_with_jev_override(selector, state, options, prior, source, threshold):
+    """Choose an already bounded S2 option; Jev cannot directly mutate state."""
+    if (not isinstance(prior, dict) or set(prior) != {"option", "reason", "source"}
+            or prior["option"] not in options or not isinstance(prior["reason"], str)
+            or not prior["reason"].strip()):
+        raise ValueError("System 2 must provide a bounded parameter prior and reason")
+    from embodied_harness.contracts import ObservationSource
+    if not isinstance(prior["source"], ObservationSource) or not prior["source"].same_state(source):
+        raise ValueError("System 2 prior must use current observation evidence")
+    decision = {"option": prior["option"], "selected_by": "system2_prior",
+                "prior": prior, "threshold": threshold, "jev_option": None, "jev_confidence": None}
+    try:
+        suggestion = selector.select(state, options)
+        suggestion.validate(options)
+        decision.update(jev_option=suggestion.option, jev_confidence=suggestion.confidence)
+        if suggestion.confidence > threshold:
+            decision.update(option=suggestion.option, selected_by="jev_override")
+    except Exception as exc:
+        # No action has been submitted by this read-only selector; retain the valid prior.
+        decision["jev_error_type"] = type(exc).__name__
+    return decision
+
+
 class JevSelector:
     """Numeric-only first implementation, compatible with the existing SystemOne choice shape."""
 

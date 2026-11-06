@@ -21,8 +21,9 @@ Never infer object identity just by largest mask: ambiguities require explicit v
 System 1 gets a host-validated parameter_scope with stage/local_mode/contact_mode/evidence_valid/parameters/adjustments.
 Its options assign physical numeric parameters (translation_step_m, rotation_step_rad, target_dx_m/target_dy_m/target_dz_m,
 opening_step) within host limits. skill_tick receives 'advance'; assigned values are in state['runtime_parameters'].
-Exactly one bounded native submission per tick. Observe again after action. Treat failed primitives/unknown/low-confidence
-or stale evidence as handoff, never false completion. Contact/pregrasp/release requires fresh SAM3 geometry.
+Exactly one bounded native submission per tick. Observe again after action. Treat failed primitives/unknown
+or stale evidence as handoff, never false completion. In the legacy System 1 mode, low selector confidence also requires handoff;
+in system2_prior_jev_override mode, use the explicit prior/override contract below instead. Contact/pregrasp/release requires fresh SAM3 geometry.
 A complete reference hook implementation is shipped in examples/ee_skill.py; use the hook schemas in the public context.
 
 ## repair

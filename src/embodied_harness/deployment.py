@@ -13,7 +13,9 @@ class SessionEpisode:
         self.agent_session_id = uuid.uuid4().hex
 
     def context(self):
-        return {"observation": self.session.observe(), "public_api": self.session.api.registry.describe()}
+        return {"observation": self.session.observe(), "public_api": self.session.api.registry.describe(),
+                "parameter_selection": {"mode": self.session.parameter_selection_mode,
+                                        "jev_override_threshold": self.session.jev_override_threshold}}
 
     def run(self, plan):
         return self.session.run_task(plan.goal, plan, allow_system2=False)

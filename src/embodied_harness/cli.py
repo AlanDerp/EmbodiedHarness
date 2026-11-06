@@ -31,7 +31,7 @@ def build_session(config):
     allowed = {"worker_url", "worker_token_env", "run_dir", "max_submissions", "sam3_url",
                "selector", "jev_model", "timeout_s", "rpc_token_env", "host", "port", "extensions", "skill_python",
                "system2_url", "system2_token_env", "max_interventions", "sam3_model_version",
-               "system1_url", "system1_token_env"}
+               "system1_url", "system1_token_env", "parameter_selection_mode", "jev_override_threshold"}
     if set(config) - allowed:
         raise ValueError("unknown harness config fields")
     if config.get("selector", "fixed") not in ("fixed", "jev", "remote"):
@@ -57,7 +57,9 @@ def build_session(config):
         selector = FixedSelector() if kind == "fixed" else JevSelector(config["jev_model"])
     session = Session(Executor(adapter, max_submissions=config.get("max_submissions", 1000)),
                    store, EventLog(run / "events.jsonl"), selector=selector,
-                   perception=Perception(store, provider), skill_python=config.get("skill_python"))
+                   perception=Perception(store, provider), skill_python=config.get("skill_python"),
+                   parameter_selection_mode=config.get("parameter_selection_mode", "system1"),
+                   jev_override_threshold=config.get("jev_override_threshold", .8))
     for extension in config.get("extensions", []):
         module, function = extension.split(":", 1)
         getattr(importlib.import_module(module), function)(session)
