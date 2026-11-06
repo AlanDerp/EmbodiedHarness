@@ -15,7 +15,7 @@ from embodied_harness.embodiments import RobotProfile
 from embodied_harness.evaluation import freeze_knowledge, verify_knowledge
 from embodied_harness.perception import Perception
 from embodied_harness.providers.sam3 import Sam3Provider
-from embodied_harness.rpc import RpcClient, RpcServer
+from embodied_harness.rpc import RpcClient, RpcServer, SerialRpcServer
 from embodied_harness.runtime import Session
 from embodied_harness.runtime.selectors import FixedSelector, JevSelector, RemoteSelector
 
@@ -291,7 +291,8 @@ def main():
         instance = build_session(config)
         address, methods = (config.get("host", "127.0.0.1"), config.get("port", 8121)), instance.tools()
     try:
-        with RpcServer(address, token, methods,
+        server_class = SerialRpcServer if args.command == "native-worker" and args.backend == "libero_plus" else RpcServer
+        with server_class(address, token, methods,
                        concurrent_methods=("stop",) if args.command == "serve" else ()) as server:
             server.serve_forever()
     except KeyboardInterrupt:

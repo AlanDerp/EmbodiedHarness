@@ -1,7 +1,7 @@
 """Authenticated, bounded synchronous RPC for worker and external System 2."""
 
 import hmac
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 import json
 import threading
 import urllib.request
@@ -82,6 +82,13 @@ class RpcServer(ThreadingHTTPServer):
             super().process_request_thread(request, client_address)
         finally:
             self.slots.release()
+
+
+class SerialRpcServer(RpcServer):
+    """Dispatch on the serving thread for thread-affine simulator/GL contexts."""
+
+    def process_request(self, request, client_address):
+        HTTPServer.process_request(self, request, client_address)
 
 
 class RpcHandler(BaseHTTPRequestHandler):
